@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+
+XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+
+if [[ ! -d "${XDG_DATA_HOME}/gcg" ]]; then
+    mkdir -p "${XDG_DATA_HOME}/gcg"
+    if [[ $? -ne 0 ]]; then
+        printf "Error: failed to create data directory\n" >&2
+        exit 1
+    fi
+fi
+
+for dep in git curl jq; do
+    if ! command -v "${dep}" >/dev/null 2>&1; then
+        printf "Error: missing dependency: %s\n" "${dep}" >&2
+        exit 1
+    fi
+done
+
+if [[ -z "${GEMINI_API_KEY}" ]]; then
+    if [[ -f "${XDG_CONFIG_HOME}/gcg/key" ]]; then
+        IFS= read -r GEMINI_API_KEY <"${XDG_CONFIG_HOME}/gcg/key"
+    fi
+fi
+
+if [[ -z "${GEMINI_API_KEY}" ]]; then
+    printf "Error: GEMINI_API_KEY is not set\n" >&2
+    printf "Please set GEMINI_API_KEY or save it in %s/gcg/key\n" "${XDG_CONFIG_HOME}" >&2
+    exit 1
+fi
+
+if ! git rev-parse --git-dir >/dev/null 2>&1; then
+    printf "Error: not inside a git repository\n" >&2
+    exit 1
+fi
+
+diff_file="${XDG_DATA_HOME}/gcg/diff.$$.tmp"
+git diff --cached -- . ':(exclude)package-lock.json' ':(exclude)pnpm-lock.yaml' ':(exclude)yarn.lock' ':(exclude)bun.lockb' >"${diff_file}"
+if [[ $? -ne 0 ]]; then
+    printf "Error: git diff execution failed\n" >&2
+    rm -f "${diff_file}"
+    exit 1
+fi
+
+if [[ ! -s "${diff_file}" ]]; then
+    printf "No staged changes found\n"
+    rm -f "${diff_file}"
+    exit 0
+fi
+
+diff_data=$(<"${diff_file}")
+rm -f "${diff_file}"
+
+if [[ ${#diff_data} -gt 90000 ]]; then
+    diff_data="${diff_data:0:90000}"
+fi
+
+model="${GIT_SUMMARY_MODEL:-gemini-3.1-flash-lite}"
+prompt="You are generating a git commit message.
+Rules:
+* Use Conventional Commits format
+* First line only
+* Max 256 characters
+* Be specific and concise
+* Do not include markdown
+* Do not include quotes
+* Do not explain anything
+* Return only the commit message
+
+Examples:
+feat(auth): add GitHub OAuth login
+fix(api): handle null response in user endpoint
+refactor(cli): simplify commit parsing logic
+docs(readme): update installation instructions
+
+Git diff:
+${diff_data}"
+
+payload_file="${XDG_DATA_HOME}/gcg/payload.$$.tmp"
+jq -n --arg prompt "${prompt}" '{contents:[{role:"user",parts:[{text:$prompt}]}],generationConfig:{temperature:0.5,topK:40,topP:0.95,maxOutputTokens:512}}' >"${payload_file}"
+if [[ $? -ne 0 ]]; then
+    printf "Error: failed to generate JSON payload\n" >&2
+    exit 1
+fi
+
+response_file="${XDG_DATA_HOME}/gcg/response.$$.tmp"
+http_status=$(curl -sS -w "%{http_code}" -o "${response_file}" -X POST -H "Content-Type: application/json" -d "@${payload_file}" "https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}")
+curl_exit=$?
+rm -f "${payload_file}"
+
+if [[ ${curl_exit} -ne 0 ]]; then
+    printf "Error: curl request failed with exit code %s\n" "${curl_exit}" >&2
+    rm -f "${response_file}"
+    exit 1
+fi
+
+if [[ "${http_status}" != "200" ]]; then
+    printf "Gemini API request failed (HTTP %s)\n" "${http_status}" >&2
+    if [[ -f "${response_file}" ]]; then
+        while IFS= read -r line; do
+            printf "%s\n" "${line}" >&2
+        done <"${response_file}"
+        rm -f "${response_file}"
+    fi
+    exit 1
+fi
+
+message=$(jq -r '.candidates[0].content.parts[0].text // ""' "${response_file}")
+jq_exit=$?
+rm -f "${response_file}"
+
+if [[ ${jq_exit} -ne 0 ]]; then
+    printf "Error: failed to parse JSON response\n" >&2
+    exit 1
+fi
+
+message="${message%%$'\n'*}"
+message="${message#"${message%%[![:space:]]*}"}"
+message="${message%"${message##*[![:space:]]}"}"
+
+if [[ -z "${message}" ]]; then
+    printf "Failed to generate or extract commit message\n" >&2
+    exit 1
+fi
+
+printf "%s\n" "${message}"

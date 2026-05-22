@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+
+git add --all
+
+git diff --cached --quiet
+if [[ $? -eq 0 ]]; then
+    printf "No changes to commit.\n"
+    exit 0
+fi
+
+message=$(gemini-generate-commit-message)
+if [[ $? -ne 0 ]]; then
+    exit 1
+fi
+
+printf "Generated commit message:\n"
+printf "%s\n" "-------------------------"
+printf "%s\n" "${message}"
+printf "%s\n" "-------------------------"
+
+printf "Do you want to commit with this message? [y/N] "
+read -r confirm
+
+if [[ "${confirm,,}" == "y" || "${confirm,,}" == "yes" ]]; then
+    git commit -m "${message}"
+else
+    printf "Commit aborted.\n"
+    exit 1
+fi
