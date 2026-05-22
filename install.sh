@@ -3,7 +3,7 @@
 install_dir="${XDG_BIN_HOME:-${HOME}/.local/bin}"
 base_url="https://raw.githubusercontent.com/unamatasanatarai/gemini-generate-commit-message/master"
 
-files=("ggic" "gemini-generate-commit-message" "gemini-show-models")
+files=("ggic" "ggicp" "gemini-generate-commit-message" "gemini-show-models")
 
 if ! command -v curl >/dev/null 2>&1; then
     printf '%s\n' 'curl is required' >&2
@@ -62,4 +62,6 @@ esac
 
 printf '\n%s\n' 'usage:'
 printf '%s\n' '  ggic'
+printf '%s\n' '  ggicp'
 printf '%s\n' '  gemini-generate-commit-message'
+printf '%s\n' '  gemini-show-models'
