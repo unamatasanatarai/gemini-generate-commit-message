@@ -48,21 +48,15 @@ The scripts rely on the XDG Base Directory Specification for handling data and c
 
 The Gemini API key must be supplied using one of two methods:
 
-1. 
-**Environment Variable**: Export `GEMINI_API_KEY` directly into your environment.
+1. **Environment Variable**: Export `GEMINI_API_KEY` directly into your environment.
 
-
-2. 
-**Configuration File**: Store the plaintext key in `$XDG_CONFIG_HOME/gcg/key` (defaults to `~/.config/gcg/key`).
-
-
+2. **Configuration File**: Store the plaintext key in `$XDG_CONFIG_HOME/gcg/key` (defaults to `~/.config/gcg/key`).
 
 ### Model Customization
 
 By default, the script calls `gemini-3.1-flash-lite`. You can modify this behavior by setting the following variable:
 
-* 
-`GIT_SUMMARY_MODEL`: Set this environment variable to target an alternative Gemini model layout.
+* `GIT_SUMMARY_MODEL`: Set this environment variable to target an alternative Gemini model layout.
 
 * To list out available models run: `gemini-show-models`
 
@@ -95,6 +89,14 @@ Run the wrapper utility within any active Git repository to stage changes and co
 
 ```bash
 ggic
+```
+
+### Interactive Commit and Push Workflow
+
+Run the wrapper utility within any active Git repository to stage changes and confirm an AI-generated message interactively, and then push the changes to the remote repository:
+
+```bash
+ggicp
 ```
 
 ### Direct Message Generation
