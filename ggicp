@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+
+TMP_P="/tmp/.git_push_tmp_$$"
+git rev-parse --abbrev-ref HEAD >"$TMP_P" 2>/dev/null
+read -r CURRENT_BRANCH <"$TMP_P"
+rm -f "$TMP_P"
+
+if [[ -z "$CURRENT_BRANCH" ]]; then
+    printf "Error: Not inside a Git repository.\n" >&2
+    exit 1
+fi
+
+git add --all
+
+git diff --cached --quiet
+if [[ $? -eq 0 ]]; then
+    printf "No changes to commit.\n"
+    exit 0
+fi
+
+message=$(gemini-generate-commit-message)
+if [[ $? -ne 0 ]]; then
+    exit 1
+fi
+
+printf "Generated commit message:\n"
+printf "%s\n" "-------------------------"
+printf "%s\n" "${message}"
+printf "%s\n" "-------------------------"
+
+printf "Do you want to commit with this message? [y/N] "
+read -r confirm
+
+if [[ "${confirm,,}" == "y" || "${confirm,,}" == "yes" ]]; then
+
+    git commit -m "${message}"
+
+    git push -u origin "$CURRENT_BRANCH"
+
+else
+    printf "Commit aborted.\n"
+    exit 1
+fi
