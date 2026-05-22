@@ -36,7 +36,6 @@ gemini-generate-commit-message    Core script that handles diff extraction, API 
 ggic                              Interactive wrapper script to stage changes, preview messages, and execute commits 
 install.sh                        Automated installation script for fetching and configuring the binaries
 LICENSE                           MIT License file 
-
 ```
 
 ---
@@ -75,9 +74,7 @@ By default, the script calls `gemini-3.1-flash-lite`. You can modify this behavi
 An installation script is provided to download the tools directly into your user binaries folder (`$XDG_BIN_HOME` or `~/.local/bin`).
 
 ```bash
-# Execute the automated installer
-curl -sSL [https://raw.githubusercontent.com/unamatasanatarai/gemini-generate-commit-message/master/install.sh](https://raw.githubusercontent.com/unamatasanatarai/gemini-generate-commit-message/master/install.sh) | bash
-
+curl -sSL https://raw.githubusercontent.com/unamatasanatarai/gemini-generate-commit-message/master/install.sh | bash
 ```
 
 ### Path Requirements
@@ -86,7 +83,6 @@ If your local bin path is not listed in your shell profile, add it manually:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
-
 ```
 
 ---
@@ -99,7 +95,6 @@ Run the wrapper utility within any active Git repository to stage changes and co
 
 ```bash
 ggic
-
 ```
 
 ### Direct Message Generation
@@ -108,7 +103,6 @@ Run the core generator directly to return a raw string output based purely on cu
 
 ```bash
 gemini-generate-commit-message
-
 ```
 
 ---
