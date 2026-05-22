@@ -15,6 +15,12 @@ mkdir -p "$install_dir" || {
     exit 1
 }
 
+config_dir="${XDG_CONFIG_HOME:-${HOME}/.config}/gemini-commit-message"
+mkdir -p "$config_dir" || {
+    printf '%s\n' 'failed to create config directory' >&2
+    exit 1
+}
+
 for file in "${files[@]}"; do
     target="${install_dir}/${file}"
     script_url="${base_url}/${file}"
@@ -65,3 +71,8 @@ printf '%s\n' '  ggic'
 printf '%s\n' '  ggicp'
 printf '%s\n' '  gemini-generate-commit-message'
 printf '%s\n' '  gemini-show-models'
+
+printf '\n%s\n' 'configuration:'
+printf '  please paste your gemini api key into:\n'
+printf '    %s\n' "${config_dir}/key"
+

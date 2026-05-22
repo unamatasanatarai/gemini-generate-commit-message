@@ -3,8 +3,8 @@
 XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 
-if [[ ! -d "${XDG_DATA_HOME}/gcg" ]]; then
-    mkdir -p "${XDG_DATA_HOME}/gcg"
+if [[ ! -d "${XDG_DATA_HOME}/gemini-commit-message" ]]; then
+    mkdir -p "${XDG_DATA_HOME}/gemini-commit-message"
     if [[ $? -ne 0 ]]; then
         printf "Error: failed to create data directory\n" >&2
         exit 1
@@ -19,14 +19,14 @@ for dep in git curl jq; do
 done
 
 if [[ -z "${GEMINI_API_KEY}" ]]; then
-    if [[ -f "${XDG_CONFIG_HOME}/gcg/key" ]]; then
-        IFS= read -r GEMINI_API_KEY <"${XDG_CONFIG_HOME}/gcg/key"
+    if [[ -f "${XDG_CONFIG_HOME}/gemini-commit-message/key" ]]; then
+        IFS= read -r GEMINI_API_KEY <"${XDG_CONFIG_HOME}/gemini-commit-message/key"
     fi
 fi
 
 if [[ -z "${GEMINI_API_KEY}" ]]; then
     printf "Error: GEMINI_API_KEY is not set\n" >&2
-    printf "Please set GEMINI_API_KEY or save it in %s/gcg/key\n" "${XDG_CONFIG_HOME}" >&2
+    printf "Please set GEMINI_API_KEY or save it in %s/gemini-commit-message/key\n" "${XDG_CONFIG_HOME}" >&2
     exit 1
 fi
 
@@ -35,7 +35,7 @@ if ! git rev-parse --git-dir >/dev/null 2>&1; then
     exit 1
 fi
 
-diff_file="${XDG_DATA_HOME}/gcg/diff.$$.tmp"
+diff_file="${XDG_DATA_HOME}/gemini-commit-message/diff.$$.tmp"
 git diff --cached -- . ':(exclude)package-lock.json' ':(exclude)pnpm-lock.yaml' ':(exclude)yarn.lock' ':(exclude)bun.lockb' >"${diff_file}"
 if [[ $? -ne 0 ]]; then
     printf "Error: git diff execution failed\n" >&2
@@ -77,14 +77,14 @@ docs(readme): update installation instructions
 Git diff:
 ${diff_data}"
 
-payload_file="${XDG_DATA_HOME}/gcg/payload.$$.tmp"
+payload_file="${XDG_DATA_HOME}/gemini-commit-message/payload.$$.tmp"
 jq -n --arg prompt "${prompt}" '{contents:[{role:"user",parts:[{text:$prompt}]}],generationConfig:{temperature:0.5,topK:40,topP:0.95,maxOutputTokens:512}}' >"${payload_file}"
 if [[ $? -ne 0 ]]; then
     printf "Error: failed to generate JSON payload\n" >&2
     exit 1
 fi
 
-response_file="${XDG_DATA_HOME}/gcg/response.$$.tmp"
+response_file="${XDG_DATA_HOME}/gemini-commit-message/response.$$.tmp"
 http_status=$(curl -sS -w "%{http_code}" -o "${response_file}" -X POST -H "Content-Type: application/json" -d "@${payload_file}" "https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}")
 curl_exit=$?
 rm -f "${payload_file}"

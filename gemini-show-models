@@ -10,8 +10,8 @@ for dep in curl jq; do
 done
 
 if [[ -z ${GEMINI_API_KEY:-} ]]; then
-    if [[ -r $XDG_CONFIG_HOME/gcg/key ]]; then
-        IFS= read -r GEMINI_API_KEY <"$XDG_CONFIG_HOME/gcg/key"
+    if [[ -r $XDG_CONFIG_HOME/gemini-commit-message/key ]]; then
+        IFS= read -r GEMINI_API_KEY <"$XDG_CONFIG_HOME/gemini-commit-message/key"
 
         if [[ $? -ne 0 && -z $GEMINI_API_KEY ]]; then
             printf 'Error: failed to read API key\n' >&2
@@ -22,7 +22,7 @@ fi
 
 if [[ -z ${GEMINI_API_KEY:-} ]]; then
     printf 'Error: GEMINI_API_KEY is not set\n' >&2
-    printf 'Please set GEMINI_API_KEY or save it in %s/gcg/key\n' "$XDG_CONFIG_HOME" >&2
+    printf 'Please set GEMINI_API_KEY or save it in %s/gemini-commit-message/key\n' "$XDG_CONFIG_HOME" >&2
     exit 3
 fi
 
