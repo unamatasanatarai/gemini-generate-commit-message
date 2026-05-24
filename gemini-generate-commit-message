@@ -61,7 +61,7 @@ prompt="You are generating a git commit message.
 Rules:
 * Use Conventional Commits format
 * First line only
-* Max 256 characters
+* Max 512 characters
 * Be specific and concise
 * Do not include markdown
 * Do not include quotes
