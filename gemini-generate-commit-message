@@ -89,7 +89,7 @@ printf -v prompt "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n\n%s\n%s" \
     "Rules:" \
     "* Use Conventional Commits: feat, fix, refactor, perf, chore, docs, or test." \
     "* Keep the subject under 72 characters." \
-    "* Add a blank line, then a short bullet list." \
+    "* Add a blank line, then a short bullet list with hyphens." \
     "* Mention only changes visible in the diff." \
     "* Prefer concrete file names, APIs, options, and behavior." \
     "* Use present tense." \
