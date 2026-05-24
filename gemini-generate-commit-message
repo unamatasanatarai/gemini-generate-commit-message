@@ -57,29 +57,62 @@ if [[ ${#diff_data} -gt 90000 ]]; then
 fi
 
 model="${GIT_SUMMARY_MODEL:-gemini-3.1-flash-lite}"
-prompt="You are generating a git commit message.
+prompt="You are generating a detailed git commit message.
+
 Rules:
 * Use Conventional Commits format
-* Minimum 120 characters
-* Maximum 512 characters
-* Include both WHAT changed and WHY
+* First line must be a concise subject under 72 characters
+* After the subject, include a blank line
+* Then include a detailed body with multiple bullet points
+* Explain:
+  - WHAT changed
+  - Important implementation details
+  - Any side effects or migration concerns
 * Be specific and concise
-* Do not include markdown
-* Do not include quotes
-* Do not explain anything
-* Return only the commit message
+* Avoid vague statements like:
+  - improve code
+  - fix issues
+  - update files
+  - refactor stuff
+* Prefer concrete technical details
+* Keep bullet points short and information-dense
+* Do not use markdown code fences
+* Do not use quotes
+* Do not explain the instructions
+* Return ONLY the commit message
 
-Examples:
-feat(auth): add GitHub OAuth login
-fix(api): handle null response in user endpoint
-refactor(cli): simplify commit parsing logic
-docs(readme): update installation instructions
+Good example:
+
+feat(auth): add GitHub OAuth login support
+
+- add OAuth callback route and token exchange handling
+- persist authenticated sessions using secure HTTP-only cookies
+- support linking existing accounts to GitHub identities
+- reduce login friction by enabling passwordless authentication
+- prepare authentication layer for future SSO providers
+
+Good example:
+
+fix(cache): prevent stale workspace state after sync
+
+- invalidate workspace cache after remote sync completion
+- avoid reusing outdated file metadata during incremental refresh
+- reduce duplicate API requests triggered by stale cache entries
+- fix inconsistent UI state when switching projects rapidly
+
+Bad example:
+
+feat(app): improve application
+
+- improve performance
+- fix bugs
+- update logic
 
 Git diff:
 ${diff_data}"
 
 payload_file="${XDG_DATA_HOME}/gemini-commit-message/payload.$$.tmp"
-jq -n --arg prompt "${prompt}" '{contents:[{role:"user",parts:[{text:$prompt}]}],generationConfig:{temperature:0.7,topK:40,topP:0.95,maxOutputTokens:512}}' >"${payload_file}"
+jq -n --arg prompt "${prompt}" '{contents:[{role:"user",parts:[{text:$prompt}]}],generationConfig:{temperature:0.4,topK:40,topP:0.95,maxOutputTokens:1024}}' >"${payload_file}"
 if [[ $? -ne 0 ]]; then
     printf "Error: failed to generate JSON payload\n" >&2
     exit 1
@@ -116,7 +149,6 @@ if [[ ${jq_exit} -ne 0 ]]; then
     exit 1
 fi
 
-message="${message%%$'\n'*}"
 message="${message#"${message%%[![:space:]]*}"}"
 message="${message%"${message##*[![:space:]]}"}"
 
