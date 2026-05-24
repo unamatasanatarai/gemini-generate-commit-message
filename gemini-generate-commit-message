@@ -36,15 +36,33 @@ if ! git rev-parse --git-dir >/dev/null 2>&1; then
 fi
 
 diff_file="${XDG_DATA_HOME}/gemini-commit-message/diff.$$.tmp"
-git diff --cached -- . ':(exclude)package-lock.json' ':(exclude)pnpm-lock.yaml' ':(exclude)yarn.lock' ':(exclude)bun.lockb' >"${diff_file}"
-if [[ $? -ne 0 ]]; then
+
+# staged changes
+git diff --cached -- . \
+    ':(exclude)package-lock.json' \
+    ':(exclude)pnpm-lock.yaml' \
+    ':(exclude)yarn.lock' \
+    ':(exclude)bun.lockb' >"${diff_file}"
+
+cached_exit=$?
+
+# unstaged changes
+git diff -- . \
+    ':(exclude)package-lock.json' \
+    ':(exclude)pnpm-lock.yaml' \
+    ':(exclude)yarn.lock' \
+    ':(exclude)bun.lockb' >>"${diff_file}"
+
+worktree_exit=$?
+
+if [[ ${cached_exit} -ne 0 || ${worktree_exit} -ne 0 ]]; then
     printf "Error: git diff execution failed\n" >&2
     rm -f "${diff_file}"
     exit 1
 fi
 
 if [[ ! -s "${diff_file}" ]]; then
-    printf "No staged changes found\n"
+    printf "No changes found\n"
     rm -f "${diff_file}"
     exit 0
 fi
@@ -57,56 +75,61 @@ if [[ ${#diff_data} -gt 90000 ]]; then
 fi
 
 model="${GIT_SUMMARY_MODEL:-gemini-3.1-flash-lite}"
-prompt="You are generating a detailed git commit message.
+prompt="You are generating a detailed git commit message from a git diff.
 
 Rules:
+
 * Use Conventional Commits format
 * First line must be a concise subject under 72 characters
 * After the subject, include a blank line
-* Then include a detailed body with multiple bullet points
+* Then include a detailed body with bullet points
 * Explain:
-  - WHAT changed
-  - Important implementation details
-  - Any side effects or migration concerns
-* Be specific and concise
-* Avoid vague statements like:
-  - improve code
-  - fix issues
-  - update files
-  - refactor stuff
-* Prefer concrete technical details
-* Keep bullet points short and information-dense
+
+  * WHAT changed
+  * WHY the change matters when it is inferable from the diff
+  * Important implementation details
+* Use present tense verbs such as add, fix, remove, rename, prevent
+* Keep bullet points short, concrete, and information-dense
+* Prefer file names, APIs, data flows, config keys, flags, hooks, or behaviors when relevant
+* Avoid vague statements such as:
+
+  * improve code
+  * fix bugs
+  * update files
+  * refactor stuff
+* Do not invent behavior not visible in the diff
+* Do not repeat the subject line in the body
 * Do not use markdown code fences
 * Do not use quotes
-* Do not explain the instructions
 * Return ONLY the commit message
+
+Guidelines:
+
+* Use feat: for new functionality
+* Use fix: for bug fixes
+* Use refactor: for structural non-behavioral changes
+* Use perf: for performance improvements
+* Use chore: for tooling, config, dependency, or maintenance updates
+* Use docs: for documentation-only changes
+* Use test: for test-related changes
 
 Good example:
 
 feat(auth): add GitHub OAuth login support
 
-- add OAuth callback route and token exchange handling
-- persist authenticated sessions using secure HTTP-only cookies
-- support linking existing accounts to GitHub identities
-- reduce login friction by enabling passwordless authentication
-- prepare authentication layer for future SSO providers
+* add OAuth callback route and token exchange handling
+* persist authenticated sessions using secure HTTP-only cookies
+* support linking existing accounts to GitHub identities
+* reduce login friction by enabling passwordless authentication
+* prepare authentication layer for future SSO providers
 
 Good example:
 
 fix(cache): prevent stale workspace state after sync
 
-- invalidate workspace cache after remote sync completion
-- avoid reusing outdated file metadata during incremental refresh
-- reduce duplicate API requests triggered by stale cache entries
-- fix inconsistent UI state when switching projects rapidly
-
-Bad example:
-
-feat(app): improve application
-
-- improve performance
-- fix bugs
-- update logic
+* invalidate workspace cache after remote sync completion
+* avoid reusing outdated file metadata during incremental refresh
+* fix inconsistent UI state when switching projects rapidly
 
 Git diff:
 ${diff_data}"
