@@ -2,182 +2,147 @@
 
 XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+state_dir="${XDG_DATA_HOME}/gemini-commit-message"
+key_file="${XDG_CONFIG_HOME}/gemini-commit-message/key"
+diff_file="${state_dir}/diff.$$.tmp"
+payload_file="${state_dir}/payload.$$.json"
+response_file="${state_dir}/response.$$.json"
+status_file="${state_dir}/status.$$.txt"
+message_file="${state_dir}/message.$$.txt"
+model="${GIT_SUMMARY_MODEL:-gemini-3.1-flash-lite}"
+diff_data=""
+prompt=""
+message=""
+http_status=""
+status=0
 
-if [[ ! -d "${XDG_DATA_HOME}/gemini-commit-message" ]]; then
-    mkdir -p "${XDG_DATA_HOME}/gemini-commit-message"
-    if [[ $? -ne 0 ]]; then
-        printf "Error: failed to create data directory\n" >&2
-        exit 1
-    fi
-fi
-
-for dep in git curl jq; do
-    if ! command -v "${dep}" >/dev/null 2>&1; then
+for dep in git curl jq mkdir; do
+    command -v "${dep}" >/dev/null 2>&1
+    status=$?
+    if [[ ${status} -ne 0 ]]; then
         printf "Error: missing dependency: %s\n" "${dep}" >&2
-        exit 1
+        exit 10
     fi
 done
 
-if [[ -z "${GEMINI_API_KEY}" ]]; then
-    if [[ -f "${XDG_CONFIG_HOME}/gemini-commit-message/key" ]]; then
-        IFS= read -r GEMINI_API_KEY <"${XDG_CONFIG_HOME}/gemini-commit-message/key"
+if [[ -z "${GEMINI_API_KEY}" && -f "${key_file}" ]]; then
+    IFS= read -r GEMINI_API_KEY <"${key_file}"
+    status=$?
+    if [[ ${status} -ne 0 && -z "${GEMINI_API_KEY}" ]]; then
+        printf "Error: failed to read API key: %s\n" "${key_file}" >&2
+        exit 11
     fi
 fi
 
 if [[ -z "${GEMINI_API_KEY}" ]]; then
     printf "Error: GEMINI_API_KEY is not set\n" >&2
-    printf "Please set GEMINI_API_KEY or save it in %s/gemini-commit-message/key\n" "${XDG_CONFIG_HOME}" >&2
-    exit 1
+    printf "Please set GEMINI_API_KEY or save it in %s\n" "${key_file}" >&2
+    exit 12
 fi
 
-if ! git rev-parse --git-dir >/dev/null 2>&1; then
+git rev-parse --git-dir >/dev/null 2>&1
+status=$?
+if [[ ${status} -ne 0 ]]; then
     printf "Error: not inside a git repository\n" >&2
-    exit 1
+    exit 13
 fi
 
-diff_file="${XDG_DATA_HOME}/gemini-commit-message/diff.$$.tmp"
-
-# staged changes
-git diff --cached -- . \
-    ':(exclude)package-lock.json' \
-    ':(exclude)pnpm-lock.yaml' \
-    ':(exclude)yarn.lock' \
-    ':(exclude)bun.lockb' >"${diff_file}"
-
-cached_exit=$?
-
-# unstaged changes
-git diff -- . \
-    ':(exclude)package-lock.json' \
-    ':(exclude)pnpm-lock.yaml' \
-    ':(exclude)yarn.lock' \
-    ':(exclude)bun.lockb' >>"${diff_file}"
-
-worktree_exit=$?
-
-if [[ ${cached_exit} -ne 0 || ${worktree_exit} -ne 0 ]]; then
-    printf "Error: git diff execution failed\n" >&2
-    rm -f "${diff_file}"
-    exit 1
+mkdir -p "${state_dir}"
+status=$?
+if [[ ${status} -ne 0 ]]; then
+    printf "Error: failed to create state directory: %s\n" "${state_dir}" >&2
+    exit 14
 fi
 
-if [[ ! -s "${diff_file}" ]]; then
+git diff --cached -- . ':(exclude)package-lock.json' ':(exclude)pnpm-lock.yaml' ':(exclude)yarn.lock' ':(exclude)bun.lockb' >"${diff_file}"
+status=$?
+if [[ ${status} -ne 0 ]]; then
+    printf "Error: failed to read staged diff\n" >&2
+    rm -f "${diff_file}" "${payload_file}" "${response_file}" "${status_file}" "${message_file}"
+    exit 15
+fi
+
+git diff -- . ':(exclude)package-lock.json' ':(exclude)pnpm-lock.yaml' ':(exclude)yarn.lock' ':(exclude)bun.lockb' >>"${diff_file}"
+status=$?
+if [[ ${status} -ne 0 ]]; then
+    printf "Error: failed to read worktree diff\n" >&2
+    rm -f "${diff_file}" "${payload_file}" "${response_file}" "${status_file}" "${message_file}"
+    exit 16
+fi
+
+while IFS= read -r line || [[ -n "${line}" ]]; do
+    diff_data+="${line}"$'\n'
+    if [[ ${#diff_data} -ge 90000 ]]; then
+        diff_data="${diff_data:0:90000}"
+        break
+    fi
+done <"${diff_file}"
+
+if [[ -z "${diff_data}" ]]; then
     printf "No changes found\n"
-    rm -f "${diff_file}"
+    rm -f "${diff_file}" "${payload_file}" "${response_file}" "${status_file}" "${message_file}"
     exit 0
 fi
 
-diff_data=$(<"${diff_file}")
-rm -f "${diff_file}"
+printf -v prompt "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n\n%s\n%s" \
+    "Generate a Git commit message from this diff." \
+    "Rules:" \
+    "* Use Conventional Commits: feat, fix, refactor, perf, chore, docs, or test." \
+    "* Keep the subject under 72 characters." \
+    "* Add a blank line, then a short bullet list." \
+    "* Mention only changes visible in the diff." \
+    "* Prefer concrete file names, APIs, options, and behavior." \
+    "* Use present tense." \
+    "* Return only the commit message." \
+    "Diff:" \
+    "${diff_data}"
 
-if [[ ${#diff_data} -gt 90000 ]]; then
-    diff_data="${diff_data:0:90000}"
-fi
-
-model="${GIT_SUMMARY_MODEL:-gemini-3.1-flash-lite}"
-prompt="You are generating a detailed git commit message from a git diff.
-
-Rules:
-
-* Use Conventional Commits format
-* First line must be a concise subject under 72 characters
-* After the subject, include a blank line
-* Then include a detailed body with bullet points
-* Explain:
-
-  * WHAT changed
-  * WHY the change matters when it is inferable from the diff
-  * Important implementation details
-* Use present tense verbs such as add, fix, remove, rename, prevent
-* Keep bullet points short, concrete, and information-dense
-* Prefer file names, APIs, data flows, config keys, flags, hooks, or behaviors when relevant
-* Avoid vague statements such as:
-
-  * improve code
-  * fix bugs
-  * update files
-  * refactor stuff
-* Do not invent behavior not visible in the diff
-* Do not repeat the subject line in the body
-* Do not use markdown code fences
-* Do not use quotes
-* Return ONLY the commit message
-
-Guidelines:
-
-* Use feat: for new functionality
-* Use fix: for bug fixes
-* Use refactor: for structural non-behavioral changes
-* Use perf: for performance improvements
-* Use chore: for tooling, config, dependency, or maintenance updates
-* Use docs: for documentation-only changes
-* Use test: for test-related changes
-
-Good example:
-
-feat(auth): add GitHub OAuth login support
-
-* add OAuth callback route and token exchange handling
-* persist authenticated sessions using secure HTTP-only cookies
-* support linking existing accounts to GitHub identities
-* reduce login friction by enabling passwordless authentication
-* prepare authentication layer for future SSO providers
-
-Good example:
-
-fix(cache): prevent stale workspace state after sync
-
-* invalidate workspace cache after remote sync completion
-* avoid reusing outdated file metadata during incremental refresh
-* fix inconsistent UI state when switching projects rapidly
-
-Git diff:
-${diff_data}"
-
-payload_file="${XDG_DATA_HOME}/gemini-commit-message/payload.$$.tmp"
 jq -n --arg prompt "${prompt}" '{contents:[{role:"user",parts:[{text:$prompt}]}],generationConfig:{temperature:0.4,topK:40,topP:0.95,maxOutputTokens:1024}}' >"${payload_file}"
-if [[ $? -ne 0 ]]; then
-    printf "Error: failed to generate JSON payload\n" >&2
-    exit 1
+status=$?
+if [[ ${status} -ne 0 ]]; then
+    printf "Error: failed to build Gemini request payload\n" >&2
+    rm -f "${diff_file}" "${payload_file}" "${response_file}" "${status_file}" "${message_file}"
+    exit 17
 fi
 
-response_file="${XDG_DATA_HOME}/gemini-commit-message/response.$$.tmp"
-http_status=$(curl -sS -w "%{http_code}" -o "${response_file}" -X POST -H "Content-Type: application/json" -d "@${payload_file}" "https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}")
-curl_exit=$?
-rm -f "${payload_file}"
-
-if [[ ${curl_exit} -ne 0 ]]; then
-    printf "Error: curl request failed with exit code %s\n" "${curl_exit}" >&2
-    rm -f "${response_file}"
-    exit 1
+curl -sS -w "%{http_code}" -o "${response_file}" -X POST -H "Content-Type: application/json" -d "@${payload_file}" "https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}" >"${status_file}"
+status=$?
+if [[ ${status} -ne 0 ]]; then
+    printf "Error: Gemini API request failed\n" >&2
+    rm -f "${diff_file}" "${payload_file}" "${response_file}" "${status_file}" "${message_file}"
+    exit 18
 fi
 
+IFS= read -r http_status <"${status_file}"
 if [[ "${http_status}" != "200" ]]; then
     printf "Gemini API request failed (HTTP %s)\n" "${http_status}" >&2
-    if [[ -f "${response_file}" ]]; then
-        while IFS= read -r line; do
-            printf "%s\n" "${line}" >&2
-        done <"${response_file}"
-        rm -f "${response_file}"
-    fi
-    exit 1
+    while IFS= read -r line || [[ -n "${line}" ]]; do
+        printf "%s\n" "${line}" >&2
+    done <"${response_file}"
+    rm -f "${diff_file}" "${payload_file}" "${response_file}" "${status_file}" "${message_file}"
+    exit 19
 fi
 
-message=$(jq -r '.candidates[0].content.parts[0].text // ""' "${response_file}")
-jq_exit=$?
-rm -f "${response_file}"
-
-if [[ ${jq_exit} -ne 0 ]]; then
-    printf "Error: failed to parse JSON response\n" >&2
-    exit 1
+jq -r '.candidates[0].content.parts[0].text // ""' "${response_file}" >"${message_file}"
+status=$?
+if [[ ${status} -ne 0 ]]; then
+    printf "Error: failed to parse Gemini response\n" >&2
+    rm -f "${diff_file}" "${payload_file}" "${response_file}" "${status_file}" "${message_file}"
+    exit 20
 fi
+
+while IFS= read -r line || [[ -n "${line}" ]]; do
+    message+="${line}"$'\n'
+done <"${message_file}"
 
 message="${message#"${message%%[![:space:]]*}"}"
 message="${message%"${message##*[![:space:]]}"}"
 
 if [[ -z "${message}" ]]; then
     printf "Failed to generate or extract commit message\n" >&2
-    exit 1
+    rm -f "${diff_file}" "${payload_file}" "${response_file}" "${status_file}" "${message_file}"
+    exit 21
 fi
 
 printf "%s\n" "${message}"
+rm -f "${diff_file}" "${payload_file}" "${response_file}" "${status_file}" "${message_file}"
