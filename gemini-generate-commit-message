@@ -60,8 +60,9 @@ model="${GIT_SUMMARY_MODEL:-gemini-3.1-flash-lite}"
 prompt="You are generating a git commit message.
 Rules:
 * Use Conventional Commits format
-* First line only
-* Max 512 characters
+* Minimum 120 characters
+* Maximum 512 characters
+* Include both WHAT changed and WHY
 * Be specific and concise
 * Do not include markdown
 * Do not include quotes
@@ -78,7 +79,7 @@ Git diff:
 ${diff_data}"
 
 payload_file="${XDG_DATA_HOME}/gemini-commit-message/payload.$$.tmp"
-jq -n --arg prompt "${prompt}" '{contents:[{role:"user",parts:[{text:$prompt}]}],generationConfig:{temperature:0.5,topK:40,topP:0.95,maxOutputTokens:512}}' >"${payload_file}"
+jq -n --arg prompt "${prompt}" '{contents:[{role:"user",parts:[{text:$prompt}]}],generationConfig:{temperature:0.7,topK:40,topP:0.95,maxOutputTokens:512}}' >"${payload_file}"
 if [[ $? -ne 0 ]]; then
     printf "Error: failed to generate JSON payload\n" >&2
     exit 1
