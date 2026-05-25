@@ -75,4 +75,3 @@ printf '%s\n' '  gemini-show-models'
 printf '\n%s\n' 'configuration:'
 printf '  please paste your gemini api key into:\n'
 printf '    %s\n' "${config_dir}/key"
-
