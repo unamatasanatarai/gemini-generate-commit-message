@@ -84,14 +84,17 @@ if [[ -z "${diff_data}" ]]; then
     exit 0
 fi
 
-printf -v prompt "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n\n%s\n%s" \
+printf -v prompt "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n\n%s\n%s" \
     "Generate a Git commit message from this diff." \
     "Rules:" \
     "* Use Conventional Commits: feat, fix, refactor, perf, chore, docs, or test." \
     "* Keep the subject under 72 characters." \
     "* Add a blank line, then a short bullet list with hyphens." \
+    "* Summarize related changes instead of listing files individually." \
+    "* Never enumerate all changed files, even if many files are modified." \
+    "* If many similar files are added or updated, describe the category or purpose in one bullet." \
     "* Mention only changes visible in the diff." \
-    "* Prefer concrete file names, APIs, options, and behavior." \
+    "* Prefer concrete APIs, features, behaviors, or domains over filenames." \
     "* Use present tense." \
     "* Return only the commit message." \
     "Diff:" \
