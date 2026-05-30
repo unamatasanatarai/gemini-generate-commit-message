@@ -1,134 +1,142 @@
 #!/usr/bin/env bash
 
 push_after_commit=false
-script_path="${BASH_SOURCE[0]}"
-script_dir="."
-generator="gemini-generate-commit-message"
-XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
-state_dir="${XDG_DATA_HOME}/gemini-commit-message"
-branch_file="${state_dir}/branch.$$.tmp"
-message_file="${state_dir}/message.$$.tmp"
-current_branch=""
-message=""
-confirm=""
-status=0
+auto_yes=false
 
-if [[ "${script_path}" == */* ]]; then
-    script_dir="${script_path%/*}"
+script_path=${BASH_SOURCE[0]}
+script_dir=.
+generator=gemini-generate-commit-message
+
+XDG_DATA_HOME=${XDG_DATA_HOME:-"$HOME/.local/share"}
+state_dir="${XDG_DATA_HOME}/gemini-commit-message"
+message_file="${state_dir}/message.$$.tmp"
+
+if [[ $script_path == */* ]]; then
+    script_dir=${script_path%/*}
 fi
 
 if [[ -x "${script_dir}/${generator}" ]]; then
     generator="${script_dir}/${generator}"
 fi
 
-if [[ "${1}" == "--push" ]]; then
-    push_after_commit=true
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --push)
+            push_after_commit=true
+            ;;
+        -y | --yes)
+            auto_yes=true
+            ;;
+        *)
+            printf 'Usage: %s [--push] [-y|--yes]\n' "${0##*/}" >&2
+            exit 2
+            ;;
+    esac
     shift
-fi
-
-if [[ $# -ne 0 ]]; then
-    printf "Usage: %s [--push]\n" "${0##*/}" >&2
-    exit 2
-fi
+done
 
 mkdir -p "${state_dir}"
-status=$?
-if [[ ${status} -ne 0 ]]; then
-    printf "Error: failed to create state directory: %s\n" "${state_dir}" >&2
+if [[ $? -ne 0 ]]; then
+    printf 'Error: failed to create state directory: %s\n' "${state_dir}" >&2
     exit 3
 fi
 
 git rev-parse --git-dir >/dev/null 2>&1
-status=$?
-if [[ ${status} -ne 0 ]]; then
-    printf "Error: not inside a git repository\n" >&2
-    rm -f "${branch_file}" "${message_file}"
+if [[ $? -ne 0 ]]; then
+    printf 'Error: not inside a git repository\n' >&2
+    rm -f "${message_file}"
     exit 4
 fi
 
-if [[ "${push_after_commit}" == true ]]; then
-    git symbolic-ref --quiet --short HEAD >"${branch_file}"
-    status=$?
-    IFS= read -r current_branch <"${branch_file}"
-    if [[ ${status} -ne 0 || -z "${current_branch}" ]]; then
-        printf "Error: cannot push from a detached HEAD\n" >&2
-        rm -f "${branch_file}" "${message_file}"
+if [[ $push_after_commit == true ]]; then
+    git symbolic-ref --quiet --short HEAD >"${message_file}"
+    if [[ $? -ne 0 ]]; then
+        printf 'Error: cannot push from a detached HEAD\n' >&2
+        rm -f "${message_file}"
+        exit 5
+    fi
+
+    IFS= read -r current_branch <"${message_file}"
+
+    if [[ -z $current_branch ]]; then
+        printf 'Error: cannot push from a detached HEAD\n' >&2
+        rm -f "${message_file}"
         exit 5
     fi
 fi
 
 git add --all
-status=$?
-if [[ ${status} -ne 0 ]]; then
-    printf "Error: failed to stage changes\n" >&2
-    rm -f "${branch_file}" "${message_file}"
+if [[ $? -ne 0 ]]; then
+    printf 'Error: failed to stage changes\n' >&2
+    rm -f "${message_file}"
     exit 6
 fi
 
 git diff --cached --quiet
 status=$?
-if [[ ${status} -eq 0 ]]; then
-    printf "No changes to commit.\n"
-    rm -f "${branch_file}" "${message_file}"
+
+if [[ $status -eq 0 ]]; then
+    printf 'No changes to commit.\n'
+    rm -f "${message_file}"
     exit 0
 fi
-if [[ ${status} -ne 1 ]]; then
-    printf "Error: failed to inspect staged changes\n" >&2
-    rm -f "${branch_file}" "${message_file}"
+
+if [[ $status -ne 1 ]]; then
+    printf 'Error: failed to inspect staged changes\n' >&2
+    rm -f "${message_file}"
     exit 7
 fi
 
 "${generator}" >"${message_file}"
 status=$?
-if [[ ${status} -ne 0 ]]; then
-    rm -f "${branch_file}" "${message_file}"
-    exit ${status}
+
+if [[ $status -ne 0 ]]; then
+    rm -f "${message_file}"
+    exit "$status"
 fi
 
-while IFS= read -r line || [[ -n "${line}" ]]; do
-    message+="${line}"$'\n'
-done <"${message_file}"
+IFS= read -r -d '' message <"${message_file}"
+message=${message%"${message##*[![:space:]]}"}
 
-message="${message%"${message##*[![:space:]]}"}"
-if [[ -z "${message}" ]]; then
-    printf "Error: generated commit message is empty\n" >&2
-    rm -f "${branch_file}" "${message_file}"
+if [[ -z $message ]]; then
+    printf 'Error: generated commit message is empty\n' >&2
+    rm -f "${message_file}"
     exit 8
 fi
 
-printf "Generated commit message:\n"
-printf "%s\n" "-------------------------"
-printf "%s\n" "${message}"
-printf "%s\n" "-------------------------"
+printf 'Generated commit message:\n'
+printf '%s\n' '-------------------------'
+printf '%s\n' "${message}"
+printf '%s\n' '-------------------------'
 
-printf "Do you want to commit with this message? [y/N] "
-IFS= read -r confirm
+if [[ $auto_yes != true ]]; then
+    printf 'Do you want to commit with this message? [y/N] '
+    IFS= read -r reply
 
-case "${confirm}" in
-y | Y | yes | YES | Yes)
-    git commit -m "${message}"
-    status=$?
-    if [[ ${status} -ne 0 ]]; then
-        printf "Error: git commit failed\n" >&2
-        rm -f "${branch_file}" "${message_file}"
-        exit 9
+    case $reply in
+        y | Y | yes | YES | Yes) ;;
+        *)
+            printf 'Commit aborted.\n'
+            rm -f "${message_file}"
+            exit 1
+            ;;
+    esac
+fi
+
+git commit -m "${message}"
+if [[ $? -ne 0 ]]; then
+    printf 'Error: git commit failed\n' >&2
+    rm -f "${message_file}"
+    exit 9
+fi
+
+if [[ $push_after_commit == true ]]; then
+    git push -u origin "${current_branch}"
+    if [[ $? -ne 0 ]]; then
+        printf 'Error: git push failed\n' >&2
+        rm -f "${message_file}"
+        exit 10
     fi
+fi
 
-    if [[ "${push_after_commit}" == true ]]; then
-        git push -u origin "${current_branch}"
-        status=$?
-        if [[ ${status} -ne 0 ]]; then
-            printf "Error: git push failed\n" >&2
-            rm -f "${branch_file}" "${message_file}"
-            exit 10
-        fi
-    fi
-    ;;
-*)
-    printf "Commit aborted.\n"
-    rm -f "${branch_file}" "${message_file}"
-    exit 1
-    ;;
-esac
-
-rm -f "${branch_file}" "${message_file}"
+rm -f "${message_file}"
