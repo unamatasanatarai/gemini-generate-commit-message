@@ -2,14 +2,18 @@
 
 XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+
 state_dir="${XDG_DATA_HOME}/gemini-commit-message"
 key_file="${XDG_CONFIG_HOME}/gemini-commit-message/key"
+
 diff_file="${state_dir}/diff.$$.tmp"
 payload_file="${state_dir}/payload.$$.json"
 response_file="${state_dir}/response.$$.json"
 status_file="${state_dir}/status.$$.txt"
 message_file="${state_dir}/message.$$.txt"
+
 model="${GIT_SUMMARY_MODEL:-gemini-3.1-flash-lite}"
+
 diff_data=""
 prompt=""
 message=""
@@ -19,6 +23,7 @@ status=0
 for dep in git curl jq mkdir; do
     command -v "${dep}" >/dev/null 2>&1
     status=$?
+
     if [[ ${status} -ne 0 ]]; then
         printf "Error: missing dependency: %s\n" "${dep}" >&2
         exit 10
@@ -28,6 +33,7 @@ done
 if [[ -z "${GEMINI_API_KEY}" && -f "${key_file}" ]]; then
     IFS= read -r GEMINI_API_KEY <"${key_file}"
     status=$?
+
     if [[ ${status} -ne 0 && -z "${GEMINI_API_KEY}" ]]; then
         printf "Error: failed to read API key: %s\n" "${key_file}" >&2
         exit 11
@@ -42,6 +48,7 @@ fi
 
 git rev-parse --git-dir >/dev/null 2>&1
 status=$?
+
 if [[ ${status} -ne 0 ]]; then
     printf "Error: not inside a git repository\n" >&2
     exit 13
@@ -49,21 +56,38 @@ fi
 
 mkdir -p "${state_dir}"
 status=$?
+
 if [[ ${status} -ne 0 ]]; then
     printf "Error: failed to create state directory: %s\n" "${state_dir}" >&2
     exit 14
 fi
 
-git diff --cached -- . ':(exclude)package-lock.json' ':(exclude)pnpm-lock.yaml' ':(exclude)yarn.lock' ':(exclude)bun.lockb' >"${diff_file}"
+git diff --cached -- \
+    . \
+    ':(exclude)package-lock.json' \
+    ':(exclude)pnpm-lock.yaml' \
+    ':(exclude)yarn.lock' \
+    ':(exclude)bun.lockb' \
+    >"${diff_file}"
+
 status=$?
+
 if [[ ${status} -ne 0 ]]; then
     printf "Error: failed to read staged diff\n" >&2
     rm -f "${diff_file}" "${payload_file}" "${response_file}" "${status_file}" "${message_file}"
     exit 15
 fi
 
-git diff -- . ':(exclude)package-lock.json' ':(exclude)pnpm-lock.yaml' ':(exclude)yarn.lock' ':(exclude)bun.lockb' >>"${diff_file}"
+git diff -- \
+    . \
+    ':(exclude)package-lock.json' \
+    ':(exclude)pnpm-lock.yaml' \
+    ':(exclude)yarn.lock' \
+    ':(exclude)bun.lockb' \
+    >>"${diff_file}"
+
 status=$?
+
 if [[ ${status} -ne 0 ]]; then
     printf "Error: failed to read worktree diff\n" >&2
     rm -f "${diff_file}" "${payload_file}" "${response_file}" "${status_file}" "${message_file}"
@@ -72,8 +96,9 @@ fi
 
 while IFS= read -r line || [[ -n "${line}" ]]; do
     diff_data+="${line}"$'\n'
-    if [[ ${#diff_data} -ge 90000 ]]; then
-        diff_data="${diff_data:0:90000}"
+
+    if [[ ${#diff_data} -ge 100000 ]]; then
+        diff_data="${diff_data:0:100000}"
         break
     fi
 done <"${diff_file}"
@@ -84,32 +109,81 @@ if [[ -z "${diff_data}" ]]; then
     exit 0
 fi
 
-printf -v prompt "%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n\n%s\n%s" \
-    "Generate a Git commit message from this diff." \
-    "Rules:" \
-    "* Use Conventional Commits: feat, fix, refactor, perf, chore, docs, or test." \
-    "* Keep the subject under 72 characters." \
-    "* Add a blank line, then a short bullet list with hyphens." \
-    "* Summarize related changes instead of listing files individually." \
-    "* Never enumerate all changed files, even if many files are modified." \
-    "* If many similar files are added or updated, describe the category or purpose in one bullet." \
-    "* Mention only changes visible in the diff." \
-    "* Prefer concrete APIs, features, behaviors, or domains over filenames." \
-    "* Use present tense." \
-    "* Return only the commit message." \
-    "Diff:" \
+printf -v prompt '%s\n\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n\n%s\n%s' \
+    "You are an expert software engineer writing a high-quality Git commit message." \
+    "Analyze the complete diff carefully before writing anything." \
+    "The commit message must describe the actual implementation changes, not merely the files that changed." \
+    "" \
+    "COMMIT FORMAT:" \
+    "Use Conventional Commits with one of: feat, fix, refactor, perf, chore, docs, test, build, ci." \
+    "Write a concise subject line under 72 characters." \
+    "After the subject, add a blank line." \
+    "Then write 2 to 15 concise bullet points describing the substantive changes." \
+    "The body should contain enough technical detail to understand the change without opening the diff." \
+    "" \
+    "WHAT TO DESCRIBE:" \
+    "* Explain the primary behavior or capability introduced, changed, or removed." \
+    "* Mention important implementation details, APIs, configuration, workflows, or user-visible behavior." \
+    "* Explain meaningful interactions between components when they are visible in the diff." \
+    "* If the change fixes a problem, describe the problem and the mechanism used to fix it." \
+    "* If the change is a refactor, explain what was reorganized and what behavior remains unchanged." \
+    "* Group related changes together instead of describing individual files." \
+    "* Use concrete technical terminology from the diff." \
+    "" \
+    "IMPORTANT RULES:" \
+    "* Do not invent motivation, requirements, behavior, or implementation details that are not supported by the diff." \
+    "* Do not list filenames unless the filename itself is important to understanding the change." \
+    "* Do not enumerate every changed file." \
+    "* Do not describe trivial formatting or mechanical changes unless they are the purpose of the commit." \
+    "* Do not use vague phrases such as 'update files', 'make improvements', 'various changes', or 'minor fixes'." \
+    "* Prefer specific behavior over generic summaries." \
+    "* Use present tense and imperative-style commit language." \
+    "* Keep the subject concise, but do not sacrifice useful meaning merely to make it shorter." \
+    "* Return only the final commit message. Do not include Markdown fences or commentary." \
+    "" \
+    "DIFF:" \
     "${diff_data}"
 
-jq -n --arg prompt "${prompt}" '{contents:[{role:"user",parts:[{text:$prompt}]}],generationConfig:{temperature:0.4,topK:40,topP:0.95,maxOutputTokens:1024}}' >"${payload_file}"
+jq -n \
+    --arg prompt "${prompt}" \
+    '{
+        contents: [
+            {
+                role: "user",
+                parts: [
+                    {
+                        text: $prompt
+                    }
+                ]
+            }
+        ],
+        generationConfig: {
+            temperature: 0.25,
+            topK: 40,
+            topP: 0.9,
+            maxOutputTokens: 2048
+        }
+    }' >"${payload_file}"
+
 status=$?
+
 if [[ ${status} -ne 0 ]]; then
     printf "Error: failed to build Gemini request payload\n" >&2
     rm -f "${diff_file}" "${payload_file}" "${response_file}" "${status_file}" "${message_file}"
     exit 17
 fi
 
-curl -sS -w "%{http_code}" -o "${response_file}" -X POST -H "Content-Type: application/json" -d "@${payload_file}" "https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}" >"${status_file}"
+curl -sS \
+    -w "%{http_code}" \
+    -o "${response_file}" \
+    -X POST \
+    -H "Content-Type: application/json" \
+    -d "@${payload_file}" \
+    "https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}" \
+    >"${status_file}"
+
 status=$?
+
 if [[ ${status} -ne 0 ]]; then
     printf "Error: Gemini API request failed\n" >&2
     rm -f "${diff_file}" "${payload_file}" "${response_file}" "${status_file}" "${message_file}"
@@ -117,17 +191,23 @@ if [[ ${status} -ne 0 ]]; then
 fi
 
 IFS= read -r http_status <"${status_file}"
+
 if [[ "${http_status}" != "200" ]]; then
     printf "Gemini API request failed (HTTP %s)\n" "${http_status}" >&2
+
     while IFS= read -r line || [[ -n "${line}" ]]; do
         printf "%s\n" "${line}" >&2
     done <"${response_file}"
+
     rm -f "${diff_file}" "${payload_file}" "${response_file}" "${status_file}" "${message_file}"
     exit 19
 fi
 
-jq -r '.candidates[0].content.parts[0].text // ""' "${response_file}" >"${message_file}"
+jq -r '.candidates[0].content.parts[0].text // ""' \
+    "${response_file}" >"${message_file}"
+
 status=$?
+
 if [[ ${status} -ne 0 ]]; then
     printf "Error: failed to parse Gemini response\n" >&2
     rm -f "${diff_file}" "${payload_file}" "${response_file}" "${status_file}" "${message_file}"
@@ -139,7 +219,7 @@ while IFS= read -r line || [[ -n "${line}" ]]; do
 done <"${message_file}"
 
 message="${message#"${message%%[![:space:]]*}"}"
-message="${message%"${message##*[![:space:]]}"}"
+message="${message%"${message##*[![:space:]]*}"}"
 
 if [[ -z "${message}" ]]; then
     printf "Failed to generate or extract commit message\n" >&2
@@ -148,4 +228,10 @@ if [[ -z "${message}" ]]; then
 fi
 
 printf "%s\n" "${message}"
-rm -f "${diff_file}" "${payload_file}" "${response_file}" "${status_file}" "${message_file}"
+
+rm -f \
+    "${diff_file}" \
+    "${payload_file}" \
+    "${response_file}" \
+    "${status_file}" \
+    "${message_file}"
