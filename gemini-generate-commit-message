@@ -12,7 +12,7 @@ response_file="${state_dir}/response.$$.json"
 status_file="${state_dir}/status.$$.txt"
 message_file="${state_dir}/message.$$.txt"
 
-model="${GIT_SUMMARY_MODEL:-gemini-3.1-flash-lite}"
+model="${GIT_SUMMARY_MODEL:-gemini-3.7-flash}"
 
 diff_data=""
 prompt=""
