@@ -16,7 +16,7 @@ A set of lightweight Bash utility scripts designed to automate Git commit messag
 - **Conventional Commits Enforcement**: Generates single-line messages (max 256 characters) with standardized scopes such as `feat`, `fix`, `refactor`, and `docs`.
 - **Automatic Noise Filtering**: Excludes standard dependency lockfiles (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lockb`) from the Git diff to optimize context tokens.
 - **Diff Context Management**: Automatically truncates Git diff inputs at 90,000 characters to prevent API request limits from being exceeded.
-- **Interactive Workflows**: Includes helper scripts (`ggic` and `ggicp`) to stage all working directory changes, generate and preview the AI-crafted message, and execute Git commits or remote pushes with confirmation.
+- **Automated Workflows**: Includes helper scripts (`ggic` and `ggicp`) to stage all working directory changes, generate and display the AI-crafted message, and execute Git commits or remote pushes automatically.
 - **Model Listing**: Queries available model endpoints dynamically using the API key to view available language model configurations.
 
 ---
@@ -35,8 +35,8 @@ A set of lightweight Bash utility scripts designed to automate Git commit messag
 ```text
 gemini-generate-commit-message   Core script containing diff parsing, token limiting, API payload generation, and response formatting.
 gemini-show-models               Utility script that queries and lists available models from the Gemini API.
-ggic                             Interactive wrapper script that runs 'git add --all', generates the commit message, and commits upon confirmation.
-ggicp                            Interactive wrapper script that runs 'git add --all', generates the commit message, commits, and pushes to origin.
+ggic                             Wrapper script that runs 'git add --all', generates the commit message, and commits automatically.
+ggicp                            Wrapper script that runs 'git add --all', generates the commit message, commits automatically, and pushes to origin.
 install.sh                       Download and installation script to place utilities into local bin directories and check PATH settings.
 LICENSE                          MIT License declaration.
 ```
@@ -99,15 +99,15 @@ gemini-show-models
 
 ## Usage
 
-### Interactive Stage and Commit
+### Automated Stage and Commit
 
-Automatically stages all changes, shows a preview of the generated message, and prompts for confirmation to commit:
+Automatically stages all changes, displays the generated message, and creates the commit:
 
 ```bash
 ggic
 ```
 
-### Interactive Stage, Commit, and Push
+### Automated Stage, Commit, and Push
 
 Stages all changes, creates a commit using the generated message, and pushes to the current branch on the remote:
 
